@@ -23,14 +23,13 @@ class KalmanFilter:
     observed ``[cx, cy, ar, h]``. Velocities are inferred, which lets the
     prediction bridge short occlusions between detections.
     """
-
     dt = 1.0 # one step per frame
 
     def __init__(self) -> None:
         self.x = np.zeros(8, dtype=np.float64)
         self.P = np.eye(8, dtype=np.float64) * 10.0 # a few pixels of uncertainty (heuristic based on SORT)
         self.Q = np.eye(8, dtype=np.float64) * 1e-2 # tiny per-frame jitter SORT implementation's default
-        self.R = np.eye(4, dtype=np.float64) * 0.5 # detector localizes within roughly a sub-pixel to a pixel (heuristic, smaller than SORT)
+        self.R = np.eye(4, dtype=np.float64) * 0.5 # detector localises within roughly a sub-pixel to a pixel (heuristic, smaller than SORT)
 
         self.F = np.array(
             [
@@ -106,6 +105,7 @@ class Track:
         self.age = 0
         self.hits = 0
         self.misses = 0
+        self.ghost = False
 
     @property
     def box(self) -> list:
@@ -266,10 +266,10 @@ class SortTracker:
             for t in tracks:
                 if t.track_id in stale:
                     t.misses += 1
-                if t.misses <= self.max_misses:
-                    kept.append(t)
-            tracks = kept
+                if t.misses > self.max_misses:
+                    t.ghost = True
         results = [[round(v) for v in t.box] for t in tracks]
+        tracks.sort(key=lambda t: t.track_id)
         new_state = {"next_id": int(self._next_id), "tracks": [t.to_state() for t in tracks]}
         return results, new_state
 
@@ -279,6 +279,9 @@ class ModelHandler:
         self.model = None
         self.load_network(model="yolov7-w6-nms-1280.onnx")
         self.labels = labels
+        if len(self.labels.items()) > 1:
+            raise(SyntaxError("ModelHandler can only handle one species label"))
+        self.target_label_value = self.labels[next(iter(self.labels))]
         self.tracker = SortTracker(max_misses=max_misses, iou_threshold=iou_threshold)
 
     def load_network(self, model):
@@ -364,30 +367,52 @@ class ModelHandler:
         image = np.array(image)
         image = image[:, :, ::-1].copy()
         h, w, _ = image.shape
-        detections = self._infer(image)
         dets = []
-        if detections:
-            boxes = detections[0]
-            labels = detections[1]
-            scores = detections[2]
 
-            for label, score, box in zip(labels, scores, boxes):
-                if score >= threshold:
-                    xtl = max(int(box[0]), 0)
-                    ytl = max(int(box[1]), 0)
-                    xbr = min(int(box[2]), w)
-                    ybr = min(int(box[3]), h)
-                    if xbr > xtl and ybr > ytl:
-                        dets.append(
-                            {
-                                "box": [xtl, ytl, xbr, ybr],
-                                "label": self.labels.get(int(label), "unknown"),
-                                "score": float(score),
-                            }
-                        )
+        reset_state = False
 
+        # Synthetic detections (user defined shapes)
+        if isinstance(shapes, list):
+            for shape in shapes:
+                if isinstance(shape, list):
+                    xtl = max(int(shape[0]), 0)
+                    ytl = max(int(shape[1]), 0)
+                    xbr = min(int(shape[2]), w)
+                    ybr = min(int(shape[3]), h)
+                    dets.append(
+                        {
+                            "box": [xtl, ytl, xbr, ybr],
+                            "label": self.target_label_value,
+                            "score": float(1.0),
+                        }
+                    )
+        if len(dets) > 0:
+            reset_state = True
+        else:
+            detections = self._infer(image)
+            if detections:
+                boxes = detections[0]
+                labels = detections[1]
+                scores = detections[2]
+
+                for label, score, box in zip(labels, scores, boxes):
+                    if score >= threshold:
+                        xtl = max(int(box[0]), 0)
+                        ytl = max(int(box[1]), 0)
+                        xbr = min(int(box[2]), w)
+                        ybr = min(int(box[3]), h)
+                        if xbr > xtl and ybr > ytl:
+                            target_label = self.labels.get(int(label), None) # Ensure we only detect what we specify as viable
+                            if target_label:
+                                dets.append(
+                                    {
+                                        "box": [xtl, ytl, xbr, ybr],
+                                        "label": target_label,
+                                        "score": float(score),
+                                    }
+                                )
         old_state = None
-        if isinstance(states, list) and len(states) > 0:
+        if isinstance(states, list) and len(states) > 0 and not reset_state:
             old_state = states[0]
         results, new_state = self.tracker.update(dets, old_state)
         return {"shapes": results, "states": [new_state]}
