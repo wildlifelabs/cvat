@@ -275,9 +275,15 @@ class SortTracker:
 
 
 class ModelHandler:
-    def __init__(self, labels, max_misses: int = 5, iou_threshold: float = 0.3):
+    def __init__(self, labels, max_misses: int = 5, iou_threshold: float = 0.3, hires=False):
         self.model = None
-        self.load_network(model="yolov7-w6-nms-1280.onnx")
+        self.resolution = 0
+        if hires:
+            self.load_network(model="yolov7-w6-nms-1280.onnx")
+            self.resolution = 1280
+        else:
+            self.load_network(model="yolov7-nms-640.onnx")
+            self.resolution = 640
         self.labels = labels
         if len(self.labels.items()) > 1:
             raise(SyntaxError("ModelHandler can only handle one species label"))
@@ -337,7 +343,7 @@ class ModelHandler:
     def _infer(self, inputs: np.ndarray):
         img = cv2.cvtColor(inputs, cv2.COLOR_BGR2RGB)
         image = img.copy()
-        image, ratio, dwdh = self.letterbox(image, auto=False)
+        image, ratio, dwdh = self.letterbox(image, new_shape=(self.resolution, self.resolution), auto=False)
         image = image.transpose((2, 0, 1))
         image = np.expand_dims(image, 0)
         image = np.ascontiguousarray(image)

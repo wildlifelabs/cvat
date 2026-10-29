@@ -1,6 +1,7 @@
 metadata:
   name: onnx-cvat-tracker
   namespace: cvat
+  hires: no
   annotations:
     name: YOLO v7 Tracker
     type: tracker
@@ -13,7 +14,7 @@ spec:
   runtime: 'python:3.10'
   handler: main:handler
   eventTimeout: 30s
-  logLevel: debug
+  logLevel: warn
   build:
     image: cvat.onnx.cvat.tracker
     baseImage: ubuntu:22.04
@@ -28,6 +29,8 @@ spec:
           value: /opt/nuclio
         - kind: RUN
           value: wget https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-w6-nms-1280.onnx
+        - kind: RUN
+          value: wget https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7-nms-640.onnx
 
   triggers:
     myHttpTrigger:

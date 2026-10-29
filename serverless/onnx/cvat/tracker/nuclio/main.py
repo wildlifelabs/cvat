@@ -14,7 +14,9 @@ def init_context(context):
             functionconfig = yaml.safe_load(function_file)
         labels_spec = functionconfig["metadata"]["annotations"]["spec"]
         labels = {item["id"]: item["name"] for item in json.loads(labels_spec)}
-        model = ModelHandler(labels)
+        hires = str(functionconfig["metadata"]["hires"]).lower() in ["yes", "true", "1", "t", "y"]
+        context.logger.warn(f"High resolution mode is {hires}")
+        model = ModelHandler(labels, hires=hires)
         context.user_data.model = model
         context.logger.info("End Init")
     except Exception as ex:
@@ -22,7 +24,7 @@ def init_context(context):
 
 def handler(context, event):
     try:
-        context.logger.info("Run YoloV7 ONNX model")
+        # context.logger.info("Run YoloV7 ONNX model")
         data = event.body
         buf = io.BytesIO(base64.b64decode(data["image"]))
         threshold = float(data.get("threshold", 0.5))

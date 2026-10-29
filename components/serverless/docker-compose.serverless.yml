@@ -13,7 +13,7 @@ services:
       http_proxy:
       https_proxy:
       no_proxy: ${no_proxy:-}
-      NUCLIO_CHECK_FUNCTION_CONTAINERS_HEALTHINESS: 'true'
+      NUCLIO_CHECK_FUNCTION_CONTAINERS_HEALTHINESS: 'false'
       NUCLIO_DASHBOARD_DEFAULT_FUNCTION_MOUNT_MODE: 'volume'
     logging:
       driver: "json-file"
